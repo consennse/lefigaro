@@ -343,7 +343,7 @@ def run_pipeline():
   # =========================================================
 
 
-  SCAN_FILE = "ls.xlsx"
+  SCAN_FILE = "scan.xlsx"
   TEST_FILE = "TEST_ls.xlsx"
 
   OUT_XLSX = "Annonces.xlsx"
