@@ -1,10 +1,10 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Body
 import main
 
 app = FastAPI()
 
 @app.post("/run")
-def run():
+def run(body: dict = Body(default={})):
     try:
         main.run_pipeline()
         return {"status": "success"}
