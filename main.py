@@ -26,74 +26,191 @@ def run_pipeline():
   rules = pd.read_excel(RULE_FILE, header=9)
   rules.columns = rules.columns.str.strip()
 
+
+  print("Loading Excel...")
+  start = time.time()
+  rules = pd.read_excel(RULE_FILE, header=9)
+  print("Excel load time:", time.time() - start)
+
   FIELDS = []
 
   for _, r in rules.iterrows():
+
       if pd.isna(r["Rank"]):
           continue
 
       rank = int(r["Rank"])
+
       parent = str(r["Parent Node"]).replace("<", "").replace(">", "").strip()
       tag = str(r["Tag Name"]).replace("<", "").replace(">", "").strip()
       typ = str(r["Type"]).lower()
 
       xls_path = f"{parent}/{tag}" if tag else None
 
-      if "decimal" in typ: t = "decimal"
-      elif "int" in typ: t = "int"
-      elif "bool" in typ: t = "bool"
-      else: t = "text"
+      # normalize type
+      if "decimal" in typ:
+          t = "decimal"
+      elif "int" in typ:
+          t = "int"
+      elif "bool" in typ:
+          t = "bool"
+      else:
+          t = "text"
 
       FIELDS.append((rank, xls_path, t))
 
   FIELDS = sorted(FIELDS, key=lambda x: x[0])
 
+  print("Columns from XLS:", len(FIELDS))
+
+  # ---------------- LOAD JSON MAP ----------------
+
   with open(MAP_FILE) as f:
-      XML_MAP = {k.lower(): v for k, v in json.load(f).items()}
+      XML_MAP = json.load(f)
+
+  # normalize JSON keys
+  XML_MAP = {k.lower(): v for k, v in XML_MAP.items()}
+
+  # ---------------- XML EXTRACT ----------------
 
   def extract(node, path):
-      if not path: return ""
+      if not path:
+          return ""
+
       try:
           current = node
           for part in path.split("/"):
-              current = current.find(part)
-              if current is None:
+              nxt = current.find(part)
+              if nxt is None:
                   return ""
+              current = nxt
           return current.text.strip() if current.text else ""
       except:
           return ""
 
+  # ---------------- CLEANERS ----------------
+
   def clean_text(v):
-      if not v: return ""
-      return v.replace('"', "'").replace("_x000D_", "<br>").replace("\n", "").strip()
+      if not v:
+          return ""
+      v = v.replace('"', "'")
+      v = v.replace("_x000D_", "<br>")    
+      v = v.replace("\n", "")
+      return v.strip()
 
   def to_decimal(v):
       try:
           num = float(v)
-          if num == 0: return ""
+          if num == 0:
+              return ""
           return f"{num:.2f}"
       except:
           return ""
 
+
   def to_int(v):
       try:
           num = int(float(v))
-          if num == 0: return ""
+          if num == 0:
+              return ""
           return str(num)
       except:
           return ""
 
   def to_bool(v):
-      if not v: return ""
-      return "OUI" if v.lower() in ["true","1","yes"] else "NON"
+      if not v:
+          return ""
+      return "OUI" if v.lower() in ["true", "1", "yes"] else "NON"
 
   def wrap(v):
       return f'"{v}"'
 
+  # ---------------- RESOLVE RULE ----------------
+  # ---------------- TRANSFORM RULES ----------------
+
+  def transform(xls_path, value):
+      key = xls_path.lower() if xls_path else ""
+
+      # Type d'annonce
+      if key == "general_listing_information/listingtype":
+          if value.lower() == "sale":
+              return "vente"
+          return "location"
+
+      # Furnished
+      if key == "custom_fields/pba__Furnished_pb":
+          return "OUI" if value else ""
+
+      # Refurbished
+      if key == "custom_fields/con_PolirisRefurbished":
+          return "OUI" if value else ""
+      
+      if key == "custom_fields/con_elevator":
+          return "OUI" if value else ""
+      
+      if key == "custom_fields/con_alarmsystem":
+          return "OUI" if value else ""
+      
+      if key == "custom_fields/con_airconditioning":
+          return "OUI" if value else ""
+      
+      if key == "custom_fields/pba__pool_pb":
+          return "OUI" if value else ""
+      
+      if key == "custom_fields/con_wheelchairaccessible":
+          return "OUI" if value else ""
+      
+      if key == "custom_fields/pba__fireplace_pb":
+          return "OUI" if value else ""
+      
+      if key == "custom_fields/con_polirisworkneeded":
+          return "OUI" if value else ""
+      
+      if key == "custom_fields/con_priceonrequest":
+          return "OUI" if value else ""
+      
+      if key == "custom_fields/con_copro":
+          return "OUI" if value else ""
+
+      if key == "custom_fields/con_coproindifficulty":
+          return "OUI" if value else ""
+      if key == "custom_fields/con_polirisbuyerfee":
+          return "0.0" 
+      
+    
+      return value
+
+  def resolve(listing, rule):
+      if rule is None:
+          return ""
+      if isinstance(rule, str) and rule.startswith("DEFAULT:"):
+          return rule.split("DEFAULT:")[1]
+      return extract(listing, rule)
+
+  # ---------------- DOWNLOAD XML ----------------
+  # ---------------- DOWNLOAD XML ----------------
+
   print("Downloading XML...")
-  r = requests.get(SOURCE_URL)
-  root = ET.fromstring(r.content)
+
+  with requests.get(SOURCE_URL, stream=True, timeout=60) as r:
+      r.raise_for_status()
+      with open("feed.xml", "wb") as f:
+          total = 0
+          for chunk in r.iter_content(1024 * 1024):  # 1MB
+              if chunk:
+                  f.write(chunk)
+                  total += len(chunk)
+                  print(f"Downloaded {total/1024/1024:.1f} MB", end="\r")
+
+  print("\nParsing XML...")
+
+  tree = ET.parse("feed.xml")
+  root = tree.getroot()
+
   listings = root.findall(".//listing")
+  print("Listings:", len(listings))
+
+  # ---------------- BUILD CSV ----------------
 
   rows = []
 
@@ -101,28 +218,66 @@ def run_pipeline():
       row = [""] * 334
 
       for rank, xls_path, t in FIELDS:
-          rule = XML_MAP.get(xls_path.lower(), None)
-          raw = extract(listing, rule)
+
+          rule = XML_MAP.get(xls_path.strip().lower(), None)
+          raw = resolve(listing, rule)
+          raw = transform(xls_path, raw)
 
           if t == "decimal":
               value = to_decimal(raw)
+              if xls_path.lower() == "custom_fields/con_polirisbuyerfee":
+                  value = "0.0"
+              else:
+                  value = to_decimal(raw)
+
           elif t == "int":
               value = to_int(raw)
           elif t == "bool":
-              value = to_bool(raw)
+              if xls_path.lower() == "custom_fields/con_virtualtour":
+                  value = clean_text(raw)
+              else:
+                  value = to_bool(raw)
           else:
               value = clean_text(raw)
 
-          row[rank-1] = wrap(value)
+          row[rank - 1] = wrap(value)
+
+
+      # row = []
+      
+      # for rank, xls_path, t in FIELDS:
+
+      #     rule = XML_MAP.get(xls_path.lower(), None)
+      #     raw = resolve(listing, rule)
+      #     raw = transform(xls_path, raw)
+
+      #     if t == "decimal":
+      #         value = to_decimal(raw)
+      #     elif t == "int":
+      #         value = to_int(raw)
+      #     elif t == "bool":
+      #         if xls_path.lower() == "custom_fields/con_virtualtour":
+      #             value = clean_text(raw)   # keep URL
+      #         else:
+      #             value = to_bool(raw)
+
+      #     else:
+      #         value = clean_text(raw)
+
+      #     row.append(wrap(value))
+
+      # # ✅ copy column B → column FS
+      # if len(row) > 174:
+      #     row[174] = row[1]
 
       rows.append(row)
+
+  # ---------------- WRITE CSV ----------------
 
   with open(CSV_NAME, "w", encoding="utf-8") as f:
       for r in rows:
           f.write(DELIMITER.join(r) + "\n")
 
-
-  print("✅ scan.csv written")
 
   # =========================================================
   # STEP 2 — CSV → Excel
@@ -132,9 +287,9 @@ def run_pipeline():
 
   df = pd.read_csv("scan.csv", sep="!#", engine="python", header=None)
   df = df.map(lambda x: x.strip('"') if isinstance(x,str) else x)
-  df.to_excel("ls.xlsx", index=False, header=False)
+  df.to_excel("scan.xlsx", index=False, header=False)
 
-  print("✅ ls.xlsx created")
+  print("✅ scan.xlsx created")
 
   # =========================================================
   # STEP 3 — IMAGE EXTRACTION
@@ -200,7 +355,7 @@ def run_pipeline():
       if re.fullmatch(r"\.\d+", v): return ""
       return v
 
-  scan = pd.read_excel("ls.xlsx", header=None, dtype=str)
+  scan = pd.read_excel("scan.xlsx", header=None, dtype=str)
   test = pd.read_excel("TEST_ls.xlsx", header=None, dtype=str)
 
   scan.columns = range(scan.shape[1])
