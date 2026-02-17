@@ -342,27 +342,52 @@ def run_pipeline():
   # STEP 5 — MERGE
   # =========================================================
 
-  print("\n=== STEP 5: MERGE ===")
+
+  SCAN_FILE = "ls.xlsx"
+  TEST_FILE = "TEST_ls.xlsx"
+
+  OUT_XLSX = "Annonces.xlsx"
+  OUT_CSV = "Annonces.csv"
+
+  DELIMITER = "!#"
+
+  # ---------- CLEAN FUNCTIONS ----------
 
   def clean_id(v):
-      if pd.isna(v): return ""
-      return re.sub(r"\s+","",str(v).replace('"','')).upper()
-
+      if pd.isna(v):
+          return ""
+      v = str(v)
+      v = v.replace('"', '')
+      v = re.sub(r'\s+', '', v)
+      return v.upper()  # normalize IDs only
   def clean(v):
-      if pd.isna(v): return ""
-      v = str(v).replace('"','').strip()
-      if v.lower() in ["nan","none"]: return ""
-      if re.fullmatch(r"\.\d+", v): return ""
+      if pd.isna(v):
+          return ""
+
+      v = str(v).replace('"', '').strip()
+
+      if v.lower() in ["nan", "none"]:
+          return ""
+
+      if re.fullmatch(r"\.\d+", v):
+          return ""
+
       return v
 
-  scan = pd.read_excel("scan.xlsx", header=None, dtype=str)
-  test = pd.read_excel("TEST_ls.xlsx", header=None, dtype=str)
+  # ---------- LOAD FILES ----------
 
+  scan = pd.read_excel(SCAN_FILE, header=None, dtype=str)
+  test = pd.read_excel(TEST_FILE, header=None, dtype=str)
+
+  # ✅ force numeric columns (kills .1 / .2 suffixes)
   scan.columns = range(scan.shape[1])
   test.columns = range(test.shape[1])
 
+  # normalize ID columns
   scan[1] = scan[1].apply(clean_id)
   test[0] = test[0].apply(clean_id)
+
+  # ---------- BUILD LOOKUP ----------
 
   lookup = {
       clean_id(row[0]): [clean(x) for x in row.tolist()]
@@ -370,27 +395,51 @@ def run_pipeline():
       if clean_id(row[0])
   }
 
-  column_map = {84:2,85:3,86:4,87:5,88:6,89:7,90:8,91:9,92:10}
+  print("LOOKUP SIZE:", len(lookup))
 
-  while scan.shape[1] < 334:
+  # ---------- COLUMN MAP ----------
+
+  column_map = {
+      84:2, 85:3, 86:4, 87:5, 88:6, 89:7, 90:8, 91:9, 92:10,
+      163:11, 164:12, 165:13, 166:14, 167:15, 168:16, 169:17, 170:18, 171:19, 
+      172:20, 173:21, 263:22, 264:23, 265:24, 266:25, 267:26, 268:27, 269:28 , 270:29, 271:30, 272:31
+  }
+
+  # ensure scan wide enough
+  max_cols = max(scan.shape[1], test.shape[1], 334)
+
+  while scan.shape[1] < max_cols:
       scan[scan.shape[1]] = ""
 
+  # ---------- MERGE ----------
+
   for i in range(len(scan)):
-      key = scan.iat[i,1]
+
+      key = scan.iat[i, 1]
+
+      # blank mapped columns first
+      for scan_col in column_map:
+          scan.iat[i, scan_col] = ""
+
       if key not in lookup:
           continue
+
       test_row = lookup[key]
-      for scan_col,test_col in column_map.items():
+
+      for scan_col, test_col in column_map.items():
           if test_col < len(test_row):
-              scan.iat[i,scan_col] = clean(test_row[test_col])
+              scan.iat[i, scan_col] = clean(test_row[test_col])
 
-  scan.to_excel("Annonces.xlsx", header=False, index=False)
+  # ---------- SAVE ----------
 
-  with open("Annonces.csv","w",encoding="utf-8") as f:
+  scan.to_excel(OUT_XLSX, header=False, index=False)
+
+  with open(OUT_CSV, "w", encoding="utf-8") as f:
       for _, row in scan.iterrows():
           f.write(DELIMITER.join(f'"{clean(x)}"' for x in row) + "\n")
 
-  print("✅ Annonces.xlsx + Annonces.csv written")
+  print("✅ merged.xlsx + merged.csv written")
+
   # =========================================================
   # FINAL ZIP
   # =========================================================
