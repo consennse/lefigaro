@@ -464,32 +464,40 @@ def run_pipeline():
   print("✅ ZIP created with Annonces.csv + config + photos")
 
   # =========================================================
-  # STEP 6 — FTP UPLOAD
-  # =========================================================
-
   from ftplib import FTP
+  import time
 
-  print("\n=== STEP 6: FTP UPLOAD ===")
+  print("\n=== STEP 6: FTP UPLOAD (FIGARO PLAIN 21) ===")
 
   FTP_HOST = "ftp.figarocms.fr"
   FTP_USER = "tld-maisonvictoire"
   FTP_PASS = "Jvexn^bF%4"
 
   try:
-      ftp = FTP(FTP_HOST, timeout=30)
-      ftp.login(FTP_USER, FTP_PASS)
+    ftp = FTP()
+    ftp.connect(FTP_HOST, 21, timeout=30)
+    ftp.login(FTP_USER, FTP_PASS)
 
-      print("Connected to FTP")
+    print("Connected to Figaro (plain FTP)")
+    print("PWD:", ftp.pwd())
+    print("FILES BEFORE:", ftp.nlst())
 
-      with open(ZIP_NAME, "rb") as f:
-          ftp.storbinary(f"STOR {ZIP_NAME}", f)
+    with open(ZIP_NAME, "rb") as f:
+        ftp.storbinary(f"STOR {ZIP_NAME}", f)
 
-      ftp.quit()
+    print("FILES AFTER UPLOAD:", ftp.nlst())
 
-      print(f"✅ Uploaded {ZIP_NAME} to FTP successfully")
+    # Wait 5 seconds to see if server deletes it
+    time.sleep(5)
+    print("FILES 5 SECONDS LATER:", ftp.nlst())
+
+    ftp.quit()
+
+    print(f"✅ Upload attempt finished")
 
   except Exception as e:
-      print("❌ FTP upload failed:", e)
+    print("❌ FTP upload failed:", e)
+
 
 if __name__ == "__main__":
     run_pipeline()
