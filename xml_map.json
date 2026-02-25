@@ -28,7 +28,7 @@
   "custom_fields/con_polirisversion": "custom_fields/con_polirisversion",
   "custom_fields/con_PolirisLanguageCode1": "custom_fields/con_polirislanguagecode1",
   "custom_fields/con_dpe": "custom_fields/con_dpe",
-  "custom_fields/con_ges/con_ges": "custom_fields/con_ges",
+  "custom_fields/con_ges": "custom_fields/con_ges",
   "custom_fields/con_polirisfeeallocation" : "custom_fields/con_polirisfeeallocation",
   "custom_fields/con_AlarmSystem" : "custom_fields/con_alarmsystem",
   "custom_fields/con_AirConditioning" : "custom_fields/con_airconditioning",
