@@ -43,5 +43,7 @@
   "custom_fields/con_coproindifficulty" : "custom_fields/con_coproindifficulty",
   "custom_field/con_titleportalen" : "custom_fields/con_titleportalen",
   "custom_field/con_textportalen": "custom_fields/con_textportalen",
-  "custom_fields/con_polirisbuyerfree":"custom_field/con_polirisbuyerfree"
+  "custom_fields/con_polirisbuyerfree":"custom_field/con_polirisbuyerfree",
+  "custom_fields/con_gesletter":"custom_fields/con_gesletter",
+  "custom_fields/con_dpeletter":"custom_fields/con_dpeletter"
 }
